@@ -84,7 +84,7 @@ verifier = BasicVerifier(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://pgvjqr.csb.app"],  # Allow your specific frontend app
+    allow_origins=["https://www.cogniticore.com"],  # Allow your specific frontend app
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
