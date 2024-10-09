@@ -82,7 +82,7 @@ verifier = BasicVerifier(
 )
 
 local_origins = [
-    "*"
+    "https://pgvjqr.csb.app/"
 ]
 
 app = FastAPI()
