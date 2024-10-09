@@ -82,10 +82,13 @@ verifier = BasicVerifier(
 
 
 app = FastAPI()
+
+allow_origins = ["https://www.cogniticore.com", "https://www-cogniticore-com.filesusr.com", "https://pgvjqr.csb.app", "https://pgvjqr.csb.app/", "http://localhost:8000/prod.html", "http://localhost:8000/", "http://localhost:8000"]
+
 # Allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://www.cogniticore.com", "https://www-cogniticore-com.filesusr.com", "https://pgvjqr.csb.app", "https://pgvjqr.csb.app/", "http://localhost:8000/prod.html", "http://localhost:8000/", "http://localhost:8000"],  # Allow your specific frontend app
+    allow_origins=["*"],  # Allow your specific frontend app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
