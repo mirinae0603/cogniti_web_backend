@@ -82,10 +82,7 @@ verifier = BasicVerifier(
 )
 
 local_origins = [
-    "http://localhost",       # Localhost
-    "http://127.0.0.1",       # Local IP
-    "http://localhost:3000",  # Adjust for frontend server
-    "http://127.0.0.1:3000"
+    "*"
 ]
 
 app = FastAPI()
