@@ -145,7 +145,7 @@ async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session
         "stream": True  # Enable streaming response
     }
     
-    Send request to OpenRouter API
+    # Send request to OpenRouter API
     response = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers={
