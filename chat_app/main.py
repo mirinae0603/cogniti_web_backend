@@ -23,17 +23,16 @@ class TextRequest(BaseModel):
     text: str
 
 
-cookie_params = CookieParameters()
+cookie_params = CookieParameters(max_age=3600, httponly=False, secure=False, samesite="none")
 
-
+# Initialize session cookie
 cookie = SessionCookie(
     cookie_name="cookie",
     identifier="general_verifier",
     auto_error=True,
-    secret_key="DONOTUSE",  
-    cookie_params=cookie_params,
+    secret_key="DONOTUSE",  # Replace this with a secure secret key in production
+    cookie_params=cookie_params,  # Corrected: copy without deep=True
 )
-
 
 backend = InMemoryBackend[UUID, SessionData]()
 
@@ -73,7 +72,6 @@ class BasicVerifier(SessionVerifier[UUID, SessionData]):
         """If the session exists, it is valid"""
         return True
 
-app = FastAPI()
 
 verifier = BasicVerifier(
     identifier="general_verifier",
@@ -82,12 +80,15 @@ verifier = BasicVerifier(
     auth_http_exception=HTTPException(status_code=403, detail="invalid session"),
 )
 
+
+app = FastAPI()
+# Allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://www.cogniticore.com", "https://www-cogniticore-com.filesusr.com", "https://pgvjqr.csb.app", "https://pgvjqr.csb.app/", "http://localhost:8000/prod.html", "http://localhost:8000/", "http://localhost:8000"],  # Allow your specific frontend app
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/create_session/{name}")
