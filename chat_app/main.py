@@ -73,6 +73,7 @@ class BasicVerifier(SessionVerifier[UUID, SessionData]):
         """If the session exists, it is valid"""
         return True
 
+app = FastAPI()
 
 verifier = BasicVerifier(
     identifier="general_verifier",
