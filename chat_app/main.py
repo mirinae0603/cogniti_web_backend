@@ -175,7 +175,7 @@ async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session
     
     # # Update session data in the backend
     # await backend.update(session_id, session_data)
-    combined_text = f"AI Models Disabled : Your Prompt{equest.text}"
+    combined_text = f"AI Models Disabled : Your Prompt{request.text}"
     
     return {"conversation": combined_text}
 
