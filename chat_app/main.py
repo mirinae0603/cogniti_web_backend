@@ -11,17 +11,15 @@ import requests
 import json
 
 # Constants
-OPENROUTER_API_KEY = "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"
-
+OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
 
 class SessionData(BaseModel):
     username: str
-    conversation: List[str] = []  
-
+    conversation: List[str] = []
 
 class TextRequest(BaseModel):
     text: str
-
+    session_id: UUID  # Now session_id is passed in the request body
 
 cookie_params = CookieParameters(max_age=3600, httponly=False, secure=False, samesite="none")
 
@@ -31,11 +29,10 @@ cookie = SessionCookie(
     identifier="general_verifier",
     auto_error=True,
     secret_key="DONOTUSE",  # Replace this with a secure secret key in production
-    cookie_params=cookie_params,  # Corrected: copy without deep=True
+    cookie_params=cookie_params,
 )
 
 backend = InMemoryBackend[UUID, SessionData]()
-
 active_sessions: List[UUID] = []
 
 class BasicVerifier(SessionVerifier[UUID, SessionData]):
@@ -72,14 +69,12 @@ class BasicVerifier(SessionVerifier[UUID, SessionData]):
         """If the session exists, it is valid"""
         return True
 
-
 verifier = BasicVerifier(
     identifier="general_verifier",
     auto_error=True,
     backend=backend,
     auth_http_exception=HTTPException(status_code=403, detail="invalid session"),
 )
-
 
 app = FastAPI()
 
@@ -94,37 +89,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create a new session
 @app.post("/create_session/{name}")
 async def create_session(name: str, response: Response):
-    session = uuid4()
-    data = SessionData(username=name, conversation=[])  
+    session = uuid4()  # Generate new session ID
+    data = SessionData(username=name, conversation=[])
     await backend.create(session, data)
-    cookie.attach_to_response(response, session)
+    cookie.attach_to_response(response, session)  # Attach cookie with session ID
     active_sessions.append(session) 
-    print("Headers : ", response.headers)
-    return {"message": f"Session created for {name}. You can now start chatting."}
+    return {"message": f"Session created for {name}. You can now start chatting.", "session_id": session}
 
+# Chat using the session ID passed in the request body
+@app.post("/chat")
+async def chat(request: TextRequest):
+    session_id = request.session_id
+    session_data = await backend.read(session_id)
+    
+    if not session_data:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-@app.post("/chat2", dependencies=[Depends(cookie)])
-async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session_data: SessionData = Depends(verifier)):
-    
-    session_data.conversation.append(f"You: {request.text}")
-    
-    
-    bot_response = f"Bot: I received your message: {request.text}"
-    session_data.conversation.append(bot_response)
-    
-    
-    await backend.update(session_id, session_data)
-    
-    return {"conversation": bot_response}
-
-@app.post("/chat", dependencies=[Depends(cookie)])
-async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session_data: SessionData = Depends(verifier)):
-    
     # Append user's message to the conversation
     session_data.conversation.append(f"You: {request.text}")
-    
+
     # Prepare the data to send to OpenRouter API
     payload = {
         "model": "liquid/lfm-40b:free", 
@@ -156,15 +142,13 @@ async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         },
         data=json.dumps(payload),
-        stream=True  # Streaming is enabled for the request as well
+        stream=True
     )
     
     # Process the response as it comes in
     combined_text = ""
-
     for chunk in response.iter_content(chunk_size=None):
         if chunk:
-            print(chunk.decode())
             if "id" in chunk.decode():
                 targ = "None".join(chunk.decode().split("null")).split("data: ")
                 for kp in targ[1:]:
@@ -174,35 +158,44 @@ async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session
     
     # Append bot response to the conversation
     session_data.conversation.append(f"Bot: {combined_text}")
-    
+
     # Update session data in the backend
     await backend.update(session_id, session_data)
-    
+
     return {"conversation": combined_text}
 
-@app.get("/whoami", dependencies=[Depends(cookie)])
-async def whoami(session_data: SessionData = Depends(verifier)):
+# Get user information using the session ID
+@app.get("/whoami")
+async def whoami(session_id: UUID):
+    session_data = await backend.read(session_id)
+    if not session_data:
+        raise HTTPException(status_code=404, detail="Session not found")
     return session_data
 
+# Get the total number of active sessions
 @app.get("/session_counts")
 async def session_counts():
     return {"session_counts": len(active_sessions)}
 
+# Get the list of current session IDs
 @app.get("/current_session_ids")
 async def current_session_ids():
     return {"current_session_ids": active_sessions}
 
-@app.post("/clear_session", dependencies=[Depends(cookie)])
-async def clear_session(response: Response, session_id: UUID = Depends(cookie)):
+# Clear a specific session by session ID
+@app.post("/clear_session")
+async def clear_session(request: TextRequest):
+    session_id = request.session_id
     await backend.delete(session_id)
-    cookie.delete_from_response(response)
+    active_sessions.remove(session_id)  # Remove from active session list
     return {"message": "Session ended and conversation cleared. You can start a new session."}
 
+# Clear all sessions
 @app.post("/clear_all_sessions")
-async def clear_all_sessions(response: Response):
+async def clear_all_sessions():
     for session_id in active_sessions:
-        await backend.delete(str(session_id))  # Delete each session from the backend
-    active_sessions.clear()  # Clear the active sessions list
+        await backend.delete(session_id)
+    active_sessions.clear()
     return {"message": "All sessions have been cleared."}
 
 if __name__ == "__main__":
