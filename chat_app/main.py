@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 
+app = FastAPI()
+
 # Allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
