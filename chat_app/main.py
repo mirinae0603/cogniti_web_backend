@@ -169,7 +169,7 @@ async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session
                         combined_text += eval(kp)['choices'][0]['delta']['content']
     
     # Append bot response to the conversation
-    session_data.conversation.append(f"Bot: {combined_text}")
+    session_data.conversation.append(combined_text)
     
     # Update session data in the backend
     await backend.update(session_id, session_data)
