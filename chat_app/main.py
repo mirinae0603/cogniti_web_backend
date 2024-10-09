@@ -81,18 +81,12 @@ verifier = BasicVerifier(
     auth_http_exception=HTTPException(status_code=403, detail="invalid session"),
 )
 
-local_origins = [
-    "https://pgvjqr.csb.app/"
-]
-
-app = FastAPI()
-# Allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=local_origins,  # You can specify your frontend URL here for better security
+    allow_origins=["https://pgvjqr.csb.app"],  # Allow your specific frontend app
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 @app.post("/create_session/{name}")
