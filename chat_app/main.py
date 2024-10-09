@@ -81,12 +81,18 @@ verifier = BasicVerifier(
     auth_http_exception=HTTPException(status_code=403, detail="invalid session"),
 )
 
+local_origins = [
+    "http://localhost",       # Localhost
+    "http://127.0.0.1",       # Local IP
+    "http://localhost:3000",  # Adjust for frontend server
+    "http://127.0.0.1:3000"
+]
 
 app = FastAPI()
 # Allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # You can specify your frontend URL here for better security
+    allow_origins=local_origins,  # You can specify your frontend URL here for better security
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
