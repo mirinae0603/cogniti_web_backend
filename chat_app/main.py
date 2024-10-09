@@ -148,33 +148,34 @@ async def chat(request: TextRequest, session_id: UUID = Depends(cookie), session
     }
     
     # Send request to OpenRouter API
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        },
-        data=json.dumps(payload),
-        stream=True  # Streaming is enabled for the request as well
-    )
+    # response = requests.post(
+    #     url="https://openrouter.ai/api/v1/chat/completions",
+    #     headers={
+    #         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    #     },
+    #     data=json.dumps(payload),
+    #     stream=True  # Streaming is enabled for the request as well
+    # )
     
-    # Process the response as it comes in
-    combined_text = ""
+    # # Process the response as it comes in
+    # combined_text = ""
 
-    for chunk in response.iter_content(chunk_size=None):
-        if chunk:
-            print(chunk.decode())
-            if "id" in chunk.decode():
-                targ = "None".join(chunk.decode().split("null")).split("data: ")
-                for kp in targ[1:]:
-                    kp = kp.split(": OPENROUTER PROCESSING")[0]
-                    if "id" in kp and "content" in kp and "delta" in kp and "choices" in kp:
-                        combined_text += eval(kp)['choices'][0]['delta']['content']
+    # for chunk in response.iter_content(chunk_size=None):
+    #     if chunk:
+    #         print(chunk.decode())
+    #         if "id" in chunk.decode():
+    #             targ = "None".join(chunk.decode().split("null")).split("data: ")
+    #             for kp in targ[1:]:
+    #                 kp = kp.split(": OPENROUTER PROCESSING")[0]
+    #                 if "id" in kp and "content" in kp and "delta" in kp and "choices" in kp:
+    #                     combined_text += eval(kp)['choices'][0]['delta']['content']
     
-    # Append bot response to the conversation
-    session_data.conversation.append(f"Bot: {combined_text}")
+    # # Append bot response to the conversation
+    # session_data.conversation.append(f"Bot: {combined_text}")
     
-    # Update session data in the backend
-    await backend.update(session_id, session_data)
+    # # Update session data in the backend
+    # await backend.update(session_id, session_data)
+    combined_text = f"AI Models Disabled : Your Prompt{equest.text}"
     
     return {"conversation": combined_text}
 
