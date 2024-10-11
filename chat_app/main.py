@@ -258,4 +258,4 @@ async def clear_all_sessions():
     return {"message": "All sessions have been cleared."}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8501), timeout_keep_alive=60)
+    uvicorn.run(app, host="0.0.0.0", port=8501, timeout_keep_alive=60)
