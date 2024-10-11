@@ -12,7 +12,7 @@ import json
 
 # Constants
 OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
-OPENROUTER_MODEL = "meta-llama/llama-3-8b-instruct:free"
+OPENROUTER_MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
 class SessionData(BaseModel):
     username: str
     conversation: List[str] = []
