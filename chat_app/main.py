@@ -105,7 +105,7 @@ sessions = {}
 async def generate_response(user_message: str, session_id: str):
     # Prepare the data to send to OpenRouter API
     payload = {
-        "model": "nousresearch/hermes-3-llama-3.1-405b:free",
+        "model": "meta-llama/llama-3.2-3b-instruct:free",
         "messages": [
             {
                 "role": "user",
