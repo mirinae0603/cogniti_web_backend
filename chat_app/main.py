@@ -12,7 +12,7 @@ import json
 
 # Constants
 OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
-
+OPENROUTER_MODEL = "meta-llama/llama-3.2-3b-instruct:free"
 class SessionData(BaseModel):
     username: str
     conversation: List[str] = []
@@ -104,8 +104,9 @@ sessions = {}
 
 async def generate_response(user_message: str, session_id: str):
     # Prepare the data to send to OpenRouter API
+    global OPENROUTER_MODEL
     payload = {
-        "model": "meta-llama/llama-3.2-3b-instruct:free",
+        "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -206,6 +207,21 @@ async def chat(request: Request):
     # Return a StreamingResponse that generates the bot's response
     return StreamingResponse(generate_response(user_message, session_id), media_type="text/plain")
 
+@app.post("/update_model")
+async def update_model(model_name: str):
+    global OPENROUTER_MODEL
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Model name cannot be empty")
+    OPENROUTER_MODEL = model_name
+    return {"message": f"Model updated to {model_name}"}
+
+@app.get("/current_model")
+async def get_current_model():
+    return {"current_model": OPENROUTER_MODEL}
+
+@app.get("/")
+async def home():
+    return {"Application": "Application Up and Running"}
 
 # Get user information using the session ID
 @app.get("/whoami")
@@ -242,4 +258,4 @@ async def clear_all_sessions():
     return {"message": "All sessions have been cleared."}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8501)
+    uvicorn.run(app, host="0.0.0.0", port=8501), timeout_keep_alive=120
