@@ -4,3 +4,5 @@ pydantic
 fastapi-sessions
 fastapi-cors
 requests
+pytz
+cassandra-driver

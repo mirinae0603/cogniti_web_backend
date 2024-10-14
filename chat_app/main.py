@@ -7,9 +7,45 @@ from fastapi_sessions.session_verifier import SessionVerifier
 from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
-import requests
-import json
+import requests, json
+from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
+from uuid import uuid4  
+from datetime import datetime, timezone
+from threading import Thread
 
+# Secure connect bundle for DataStax Astra
+cloud_config = {
+    'secure_connect_bundle': 'secure-connect-cogniticore-chat-records.zip'
+}
+
+# Token JSON file for authentication
+with open("shivanshdarshan@gmail.com-token.json") as f:
+    secrets = json.load(f)
+
+CLIENT_ID = secrets["clientId"]
+CLIENT_SECRET = secrets["secret"]
+
+# Create authentication provider and connect to the cluster
+auth_provider = PlainTextAuthProvider(CLIENT_ID, CLIENT_SECRET)
+cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
+session = cluster.connect()
+
+
+def insert_chat_pair(question, answer, session_id="experiment"):
+    created_at = str(datetime.now(timezone.utc))
+    session.execute("""
+    INSERT INTO chats.qa_pairs (id, session_id, question, answer, created_at)
+    VALUES (%s, %s, %s, %s, %s)
+    """, (uuid4(), session_id, question, answer, created_at))
+
+
+# # Insert some example chat question and answer pairs
+# insert_chat_pair("What specific industries do your AI solutions cater to?", "We cater to a broad range of industries, each with unique needs that our AI solutions are specifically designed to address. These include: \n1. **Finance** – Enhancing fraud detection, automating processes like underwriting and compliance. \n2. **Healthcare** – Driving innovation in diagnostics, personalized treatment plans, and patient monitoring. \n3. **Retail** – Transforming customer experience with personalized recommendations and inventory management. \n4. **Manufacturing** – Automating quality control through computer vision and optimizing supply chain processes. \n5. **Education** – Offering personalized learning experiences and interactive content for better engagement. \n6. **Hospitality** – Providing AI-driven guest experiences, predictive models for customer preferences, and real-time itinerary management. Our solutions are adaptable, scalable, and designed to meet the dynamic needs of various industries, ensuring maximum impact and efficiency.")
+# insert_chat_pair("How can your AI chatbot help my business improve customer engagement?", "Our AI chatbot improves customer engagement by: \n1. **Personalization** – Offering tailored responses based on the customer’s history and preferences, ensuring each interaction feels unique. \n2. **Availability** – Providing 24/7 customer service, which increases responsiveness and reduces wait times, leading to greater customer satisfaction. \n3. **Efficiency** – Automating routine tasks and inquiries such as FAQs, booking management, or lead generation, freeing your team to focus on more complex interactions. \n4. **Analytics** – Gathering insights from conversations to track customer behavior, preferences, and pain points, helping you refine your service strategy. \n5. **Seamless integration** – Integrating with your existing CRM systems to ensure all customer interactions are consistent across channels. These capabilities work together to create a more responsive and engaging customer service experience.")
+
+
+#=========================================================================================================================
 # Constants
 OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
 OPENROUTER_MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
@@ -185,8 +221,8 @@ async def generate_response(user_message: str, session_id: str):
         sessions[session_id] = {"messages": []}  # Example session data
 
     sessions[session_id]["messages"].append({"bot": combined_text})
-    
-
+    th = Thread(target = insert_chat_pair, args = (user_message, combined_text, session_id,))
+    th.start()
     # Return the generated response
      # Stream the response
 from fastapi.responses import StreamingResponse
