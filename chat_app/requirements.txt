@@ -6,3 +6,4 @@ fastapi-cors
 requests
 pytz
 cassandra-driver
+azure-ai-openai
