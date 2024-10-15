@@ -524,7 +524,8 @@ async def generate_response_azure(user_message: str, session_id: str):
                 6. Answers must not be too big around 100 words
                 7. Remove brackets and other text around provided url's in the answer
                 8. If {user_message} is irrelevant to cbove context answer Please ask relevant questions
-                9. If question is related to Conversationaly Summary answer it properly with fine details"""
+                9. If question is related to Conversationaly Summary answer it properly with fine details
+                10. Answer Greetings professionally as AI assistant from Cogniticore"""
     
     # datad = f"{user_message} answer in 3 points 50 words and don't answer in markdown format only text format"
     payload = {
