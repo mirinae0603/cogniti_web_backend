@@ -520,7 +520,6 @@ async def generate_response_azure(user_message: str, session_id: str):
                 Instagram URL - https://www.instagram.com/COGNITICORE/
                 Thread(Twitter) URL -  https://x.com/CognitiCore
 
-                Prev - Conversation Summary : {session_data.summary}  for reference
                 For the User asked Question {user_message} answer it on these guidelines
                 1. Answers should be always in points with fine details
                 3. Add relevant URL to answer as well.
@@ -530,7 +529,7 @@ async def generate_response_azure(user_message: str, session_id: str):
                 7. Remove brackets and other text around provided url's in the answer
                 8. If user is greeting answer it professionally as AI assistant from Cogniticore.
                 8. If {user_message} is irrelevant to cbove context answer Please ask relevant questions
-                9. If question is related to Conversationaly Summary answer it properly with fine details
+                9. If question is related to Conversationaly Summary this {session_data.summary} answer it properly with fine details
                 """
     
     # datad = f"{user_message} answer in 3 points 50 words and don't answer in markdown format only text format"
