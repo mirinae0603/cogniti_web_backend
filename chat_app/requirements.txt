@@ -7,3 +7,4 @@ requests
 pytz
 cassandra-driver
 azure-ai-inference
+openai
