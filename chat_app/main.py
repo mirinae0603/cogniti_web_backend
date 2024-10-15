@@ -157,7 +157,7 @@ async def sumarize_conversation(session_id):
                         "messages": [
                         {
                             "role": "user",
-                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided. answer in 2-3 lines ensure correct data in summary no vague stuffs."
+                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided. ensure correct data in summary no vague stuffs and capture asmuch fine details as possible capture relevant keywords about user and other details which can acta as reference answer in 3-4 lines."
                         }
                         ]
                         
@@ -179,7 +179,7 @@ async def sumarize_conversation(session_id):
                         "messages": [
                         {
                             "role": "user",
-                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided. answer in 2-3 lines ensure correct data in summary no vague stuffs."
+                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided.  ensure correct data in summary no vague stuffs and capture asmuch fine details as possible."
                         }
                         ]
                         
@@ -258,7 +258,7 @@ async def generate_response(user_message: str, session_id: str):
 
                 Prev - Conversation Summary : {session_data.summary} 
                 For the User asked Question {user_message} answer it on these guidelines
-                1. Answers should be always in points with proper line break and beautifully structured for readability
+                1. Answers should be always in points with fine details.
                 2. If question is not related to above context by more than 70% only Give `Please ask relevant question` as answer
                 3. Add relevant URL to answer as well for Reference
                 4. Answer as if you own the information
@@ -468,14 +468,14 @@ async def generate_response_azure(user_message: str, session_id: str):
 
                 Prev - Conversation Summary : {session_data.summary}  for reference
                 For the User asked Question {user_message} answer it on these guidelines
-                1. Answers should be always in points with proper line break and beautifully organized for readability
+                1. Answers should be always in points with fine details
                 3. Add relevant URL to answer as well.
-                4. Answer as if you own the information being an assistant of Cogniticore 
-                5. Only answer to the Point no useless and vague Information
+                4. Answer as if you are an assistant of Cogniticore and represeting it
+                5. Only answer to the Point no useless and vague Information should be spurted out 
                 6. Answers must not be too big around 100 words
-                7. If Question is greeting answer it professionally as you are assistant guiding clients for our company Cogniticore
-                8. Remove brackets and other text around provided url's in the answer
-                8. If {user_message} is irrelevant to cbove context answer Please ask relevant questions"""
+                7. Remove brackets and other text around provided url's in the answer
+                8. If {user_message} is irrelevant to cbove context answer Please ask relevant questions
+                9. If question is related to Conversationaly Summary answer it properly with fine details"""
     
     # datad = f"{user_message} answer in 3 points 50 words and don't answer in markdown format only text format"
     payload = {
