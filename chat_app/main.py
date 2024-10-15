@@ -234,12 +234,14 @@ async def azure_sumarize_conversation(session_id):
     try:
         response = requests.post(ENDPOINT, headers=headers, json=payload)
         print(response.json()['choices'][0]['message']['content'])
-    except:
+    except Exception as e:
+        print(e)
         pass
     try:
         session_data.summary = response.json()['choices'][0]['message']['content']
         await backend.update(UUID(session_id), session_data)
     except Exception as e:
+        print(e)
         pass
 
 async def generate_response(user_message: str, session_id: str):
