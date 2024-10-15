@@ -179,7 +179,8 @@ async def sumarize_conversation(session_id):
                         "messages": [
                         {
                             "role": "user",
-                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided.  ensure correct data in summary no vague stuffs and capture asmuch fine details as possible."
+                            "content": f"""{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided.  ensure correct data in summary no vague stuffs and capture asmuch fine details as possible.
+                                        Capture keypoints and details to know everything about the conversation"""
                         }
                         ]
                         
@@ -193,6 +194,52 @@ async def sumarize_conversation(session_id):
         
         # session_data.summary = f"Summary Generation Failed - Reason : {e}"
         # await backend.update(UUID(session_id), session_data)
+        pass
+
+async def azure_sumarize_conversation(session_id):
+    print("Summarization Initiated")
+    # Get the conversation from the session
+    session_data = await backend.read(UUID(session_id))
+    # Summarize the conversation
+    # if len(session_data.raw_chat_data)%5==0 and len(session_data.raw_chat_data)>5:
+    data_to_summarize = ""
+    if len(session_data.raw_chat_data)>11:
+        data_to_summarize = ''.join(session_data.raw_chat_data)[-10:]
+    else:
+        data_to_summarize = ''.join(session_data.raw_chat_data)[:]
+
+    payload = {
+    "messages": [
+        {
+        "role": "system",
+        "content": [
+            {
+            "type": "text",
+            "text": f"""{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided.  ensure correct data in summary no vague stuffs and capture asmuch fine details as possible.
+                                        Capture keypoints and details to know everything about the conversation"""
+            }
+        ]
+        }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_tokens": 800,
+    # "stream":True
+    }
+
+    ENDPOINT = api_base
+
+    print(payload)
+    # Send request
+    try:
+        response = requests.post(ENDPOINT, headers=headers, json=payload)
+        print(response.json()['choices'][0]['message']['content'])
+    except:
+        pass
+    try:
+        session_data.summary = response.json()['choices'][0]['message']['content']
+        await backend.update(UUID(session_id), session_data)
+    except Exception as e:
         pass
 
 async def generate_response(user_message: str, session_id: str):
@@ -532,7 +579,7 @@ async def generate_response_azure(user_message: str, session_id: str):
         await backend.update(UUID(session_id), session_data)
 
     print("Initiatning Summary Generation")
-    await sumarize_conversation(session_id)
+    await azure_sumarize_conversation(session_id)
 
 @app.post("/azure_stream")
 async def chat(request: StreamRequest):
