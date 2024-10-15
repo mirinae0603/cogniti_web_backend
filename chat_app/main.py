@@ -196,58 +196,7 @@ async def sumarize_conversation(session_id):
         # await backend.update(UUID(session_id), session_data)
         pass
 
-async def azure_sumarize_conversation(session_id):
-    print("Summarization Initiated")
-    # Get the conversation from the session
-    session_data = await backend.read(UUID(session_id))
-    # Summarize the conversation
-    # if len(session_data.raw_chat_data)%5==0 and len(session_data.raw_chat_data)>5:
-    data_to_summarize = ""
-    if len(session_data.raw_chat_data)>11:
-        data_to_summarize = ''.join(session_data.raw_chat_data)[-10:]
-    else:
-        data_to_summarize = ''.join(session_data.raw_chat_data)[:]
 
-    headers = {
-                    "Content-Type": "application/json",
-                    "api-key": AZURE_OPENAI_API_KEY,
-                }
-
-    payload = {
-    "messages": [
-        {
-        "role": "system",
-        "content": [
-            {
-            "type": "text",
-            "text": f"""{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided.  ensure correct data in summary no vague stuffs and capture asmuch fine details as possible.
-                                        Capture keypoints and details to know everything about the conversation"""
-            }
-        ]
-        }
-    ],
-    "temperature": 0.7,
-    "top_p": 0.95,
-    "max_tokens": 800,
-    # "stream":True
-    }
-
-    ENDPOINT = AZURE_OPENAI_ENDPOINT
-
-    print(payload)
-    # Send request
-    try:
-        response = requests.post(ENDPOINT, headers=headers, json=payload)
-        print(response.json()['choices'][0]['message']['content'])
-    except Exception as e:
-        print(e)
-        pass
-    try:
-        session_data.summary = response.json()['choices'][0]['message']['content']
-        await backend.update(UUID(session_id), session_data)
-    except Exception as e:
-        print(e)
-        pass
 
 async def generate_response(user_message: str, session_id: str):
     # Prepare the data to send to OpenRouter API
@@ -460,104 +409,161 @@ client = AzureOpenAI(
   api_version="2024-07-18"
 )
 
-async def generate_response_azure(user_message: str, session_id: str):
-    # Prepare the data to send to OpenRouter API
+async def azure_sumarize_conversation(session_id):
+    print("Summarization Initiated Azure")
+    # Get the conversation from the session
     session_data = await backend.read(UUID(session_id))
-    datad = f"""
-                Home Page URL - https://www.cogniticore.com
-                Case Studies NLP URL - "https://www.cogniticore.com/nlp
-                Case Studies CV URL - https://www.cogniticore.com/cv
-                Capabilities URL - https://www.cogniticore.com/capabilities
-                About Us URL     - https://www.cogniticore.com/aboutus
-                Contact Us URL   - https://www.cogniticore.com/contactus
+    # Summarize the conversation
+    # if len(session_data.raw_chat_data)%5==0 and len(session_data.raw_chat_data)>5:
+    data_to_summarize = ""
+    if len(session_data.raw_chat_data)>11:
+        data_to_summarize = ''.join(session_data.raw_chat_data)[-10:]
+    else:
+        data_to_summarize = ''.join(session_data.raw_chat_data)[:]
 
-                Enable AI Dominance in Your Industry
-
-                AI Chat: Fast, Personal, Evolving  
-
-                Transform customer engagement with an industry-specific chatbot that automates support, provides insightful analytics, and delivers seamless lead classification—minimizing manual effort.
-
-                Tailored AI Solutions  
-
-                - Natural Language Processing (NLP) & Large Language Models (LLMs): Transform text into actionable insights with advanced NLP and LLM capabilities, enabling sentiment analysis, summarization, and effective communication for data-driven decisions.
-
-                - Computer Vision: Harness visual data to automate processes and unlock insights, from object detection to 3D reconstruction, enhancing operational efficiency.
-
-                - MLOps: Optimize your AI lifecycle with MLOps solutions, ensuring integration, monitoring, and scalability for thriving AI projects.
-
-                Capabilities: Harnessing AI for Efficiency  
-
-                - NLP: Our chatbots utilize advanced NLP techniques for seamless customer interactions, delivering instant support and personalized experiences.
-
-                - LLMs: Revolutionize technology interaction with advanced text generation and conversation capabilities, automating tasks and enhancing customer engagement.
-
-                - Workflow Automation: Automate repetitive tasks to reduce errors and streamline operations, allowing teams to focus on valuable work.
-
-                - MLOps (CLONE): CLONE (Continuous Learning Operations & Neural Efficiency) optimizes ML workflows, enhancing model deployment, monitoring, and management for better decision-making.
-
-                - Computer Vision: Enable machines to interpret visual data, leveraging algorithms for defect detection and actionable insights across industries.
-
-                - TryOn Technology: Revolutionize shopping with virtual try-ons, transforming business processes through enhanced automation and decision-making.
-
-                About Us: The Power of Communication  
-
-                - Vision: Pioneer AI’s future with transformative solutions that empower partners to lead their industries.
-                - Mission: Empower partners to achieve dominance through innovative AI solutions, unlocking potential and driving growth.
-
-                Our Values: A.C.T.I.O.N.  
-
-                - Accountability
-                - Customer-Centric  
-                - Trust & Transparency 
-                - Innovation-Driven 
-                - Operational Excellence
-                - Nimbleness
-
-                Contact Email Address - connect@cogniticore.com
-                Contact Phone Number  - Tel: +1 (302) 343-3422
-                Contact Address - 16192 Coastal Highway, Lewes Delaware 19958, County of Sussex
-                Linkdin URL - https://www.linkedin.com/company/cogniti-core
-                Instagram URL - https://www.instagram.com/COGNITICORE/
-                Thread(Twitter) URL -  https://x.com/CognitiCore
-
-                For the User asked Question {user_message} answer it on these guidelines
-                1. Answers should be always in points with fine details
-                3. Add relevant URL to answer as well.
-                4. Answer as if you are an assistant of Cogniticore and represeting it
-                5. Only answer to the Point no useless and vague Information should be given out anser like an AI chat assistant
-                6. Answers must not be too big around 100 words
-                7. Remove brackets and other text around provided url's in the answer
-                8. If user is greeting answer it professionally as AI assistant from Cogniticore.
-                8. If {user_message} is irrelevant to cbove context answer Please ask relevant questions
-                9. If question is related to Conversationaly Summary this {session_data.summary} answer it properly with fine details
-                """
-    
-    # datad = f"{user_message} answer in 3 points 50 words and don't answer in markdown format only text format"
-    payload = {
-                "messages": [
-                    {
-                    "role": "system",
-                    "content": [
-                        {
-                        "type": "text",
-                        "text": datad,
-                        }
-                    ]
-                    }
-                ],
-                "temperature": 0.7,
-                "top_p": 0.95,
-                "max_tokens": 800,
-                "stream":True
-                }
-    
     headers = {
                     "Content-Type": "application/json",
                     "api-key": AZURE_OPENAI_API_KEY,
                 }
-    # Send request to OpenRouter API
-    combined_text = ""
+
+    payload = {
+    "messages": [
+        {
+        "role": "system",
+        "content": [
+            {
+            "type": "text",
+            "text": f"""{data_to_summarize} Summarize this in 3-4 lines capturing major keywords and intent"""
+            }
+        ]
+        }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_tokens": 800,
+    # "stream":True
+    }
+
+    ENDPOINT = AZURE_OPENAI_ENDPOINT
+
+    print(payload)
+    # Send request
+    try:
+        response = requests.post(ENDPOINT, headers=headers, json=payload)
+        print(response.json()['choices'][0]['message']['content'])
+    except Exception as e:
+        print(e)
+        pass
+    try:
+        session_data.summary = response.json()['choices'][0]['message']['content']
+        await backend.update(UUID(session_id), session_data)
+    except Exception as e:
+        print(e)
+        pass
+
+async def generate_response_azure(user_message: str, session_id: str):
+    # Prepare the data to send to OpenRouter API
+    session_data = await backend.read(UUID(session_id))
+
+    # Define a template for company information and responses
+    company_info = {
+        "home_url": "https://www.cogniticore.com",
+        "nlp_url": "https://www.cogniticore.com/nlp",
+        "cv_url": "https://www.cogniticore.com/cv",
+        "capabilities_url": "https://www.cogniticore.com/capabilities",
+        "about_url": "https://www.cogniticore.com/aboutus",
+        "contact_url": "https://www.cogniticore.com/contactus",
+        "linkedin_url": "https://www.linkedin.com/company/cogniti-core",
+        "email": "connect@cogniticore.com",
+        "phone": "+1 (302) 343-3422",
+    }
+
+    # Create a well-structured system message for better guidance
+    system_prompt = f"""
+    You are an AI assistant for Cogniticore, a company specializing in AI-driven solutions like NLP, Computer Vision, and MLOps. 
+    The user is interacting with the AI in the context of the company's offerings. 
+    Use the following guidelines for response:
+    
+    Company Details - 
+
+    Enable AI Dominance in Your Industry
+
+    AI Chat: Fast, Personal, Evolving  
+
+    Transform customer engagement with an industry-specific chatbot that automates support, provides insightful analytics, and delivers seamless lead classification—minimizing manual effort.
+
+    Tailored AI Solutions  
+
+    - Natural Language Processing (NLP) & Large Language Models (LLMs): Transform text into actionable insights with advanced NLP and LLM capabilities, enabling sentiment analysis, summarization, and effective communication for data-driven decisions.
+
+    - Computer Vision: Harness visual data to automate processes and unlock insights, from object detection to 3D reconstruction, enhancing operational efficiency.
+
+    - MLOps: Optimize your AI lifecycle with MLOps solutions, ensuring integration, monitoring, and scalability for thriving AI projects.
+
+    Capabilities: Harnessing AI for Efficiency  
+
+    - NLP: Our chatbots utilize advanced NLP techniques for seamless customer interactions, delivering instant support and personalized experiences.
+
+    - LLMs: Revolutionize technology interaction with advanced text generation and conversation capabilities, automating tasks and enhancing customer engagement.
+
+    - Workflow Automation: Automate repetitive tasks to reduce errors and streamline operations, allowing teams to focus on valuable work.
+
+    - MLOps (CLONE): CLONE (Continuous Learning Operations & Neural Efficiency) optimizes ML workflows, enhancing model deployment, monitoring, and management for better decision-making.
+
+    - Computer Vision: Enable machines to interpret visual data, leveraging algorithms for defect detection and actionable insights across industries.
+
+    - TryOn Technology: Revolutionize shopping with virtual try-ons, transforming business processes through enhanced automation and decision-making.
+
+    About Us: The Power of Communication  
+
+    - Vision: Pioneer AI’s future with transformative solutions that empower partners to lead their industries.
+    - Mission: Empower partners to achieve dominance through innovative AI solutions, unlocking potential and driving growth.
+
+    Our Values: A.C.T.I.O.N.  
+
+    - Accountability
+    - Customer-Centric  
+    - Trust & Transparency 
+    - Innovation-Driven 
+    - Operational Excellence
+    - Nimbleness
+
+    All Contact Info's and Website related URL's - {company_info}
+
+    - If the user asks for company details answer it based on above data, include relevant URLs
+    - Always answer with no more than 150 words.
+    - Greet the user if their message is a greeting.
+    - Use bullet points for clarity.
+    - Be professional and concise.
+    - Include relevant previous conversation context if needed: {session_data.summary}
+    - Avoid answering anything irrelevant to Cogniticore's offerings or related to politics.
+    """
+    
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_message,
+            }
+        ],
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_tokens": 150,
+        "stream": True,
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": AZURE_OPENAI_API_KEY,
+    }
+
+    # Send the request to Azure OpenAI
     response = requests.post(AZURE_OPENAI_ENDPOINT, headers=headers, json=payload)
+    combined_text = ""
     response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
     for line in response.iter_lines():
         if line:
