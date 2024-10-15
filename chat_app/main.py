@@ -1,18 +1,24 @@
 from pydantic import BaseModel
 from fastapi import HTTPException, FastAPI, Response, Depends
 from uuid import UUID, uuid4
-import uvicorn
+import uvicorn, openai
 from fastapi_sessions.backends.implementations import InMemoryBackend
 from fastapi_sessions.session_verifier import SessionVerifier
 from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
-import requests, json
+import requests,json
+from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from threading import Thread
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
-from uuid import uuid4  
 from datetime import datetime, timezone
-from threading import Thread
+
+# Constants
+OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
+
+OPENROUTER_MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
 
 # Secure connect bundle for DataStax Astra
 cloud_config = {
@@ -31,26 +37,17 @@ auth_provider = PlainTextAuthProvider(CLIENT_ID, CLIENT_SECRET)
 cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
 session = cluster.connect()
 
-
-def insert_chat_pair(question, answer, session_id="experiment"):
+def insert_chat_pair(question, answer, model_used, summary_used, session_id="experiment"):
     created_at = str(datetime.now(timezone.utc))
     session.execute("""
-    INSERT INTO chats.qa_pairs (id, session_id, question, answer, created_at)
-    VALUES (%s, %s, %s, %s, %s)
-    """, (uuid4(), session_id, question, answer, created_at))
+    INSERT INTO chats.qa_pairs (id, session_id, question, answer, created_at, model_used, summary_used)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (uuid4(), session_id, question, answer, created_at, model_used, summary_used))
 
-
-# # Insert some example chat question and answer pairs
-# insert_chat_pair("What specific industries do your AI solutions cater to?", "We cater to a broad range of industries, each with unique needs that our AI solutions are specifically designed to address. These include: \n1. **Finance** – Enhancing fraud detection, automating processes like underwriting and compliance. \n2. **Healthcare** – Driving innovation in diagnostics, personalized treatment plans, and patient monitoring. \n3. **Retail** – Transforming customer experience with personalized recommendations and inventory management. \n4. **Manufacturing** – Automating quality control through computer vision and optimizing supply chain processes. \n5. **Education** – Offering personalized learning experiences and interactive content for better engagement. \n6. **Hospitality** – Providing AI-driven guest experiences, predictive models for customer preferences, and real-time itinerary management. Our solutions are adaptable, scalable, and designed to meet the dynamic needs of various industries, ensuring maximum impact and efficiency.")
-# insert_chat_pair("How can your AI chatbot help my business improve customer engagement?", "Our AI chatbot improves customer engagement by: \n1. **Personalization** – Offering tailored responses based on the customer’s history and preferences, ensuring each interaction feels unique. \n2. **Availability** – Providing 24/7 customer service, which increases responsiveness and reduces wait times, leading to greater customer satisfaction. \n3. **Efficiency** – Automating routine tasks and inquiries such as FAQs, booking management, or lead generation, freeing your team to focus on more complex interactions. \n4. **Analytics** – Gathering insights from conversations to track customer behavior, preferences, and pain points, helping you refine your service strategy. \n5. **Seamless integration** – Integrating with your existing CRM systems to ensure all customer interactions are consistent across channels. These capabilities work together to create a more responsive and engaging customer service experience.")
-
-
-#=========================================================================================================================
-# Constants
-OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
-OPENROUTER_MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
 class SessionData(BaseModel):
     username: str
+    raw_chat_data: List[str] = []
+    summary: str
     conversation: List[str] = []
 
 class TextRequest(BaseModel):
@@ -70,6 +67,10 @@ cookie = SessionCookie(
 
 backend = InMemoryBackend[UUID, SessionData]()
 active_sessions: List[UUID] = []
+
+class StreamRequest(BaseModel):
+    user_message: str
+    session_id: str
 
 class BasicVerifier(SessionVerifier[UUID, SessionData]):
     def __init__(
@@ -129,36 +130,140 @@ app.add_middleware(
 @app.post("/create_session/{name}")
 async def create_session(name: str, response: Response):
     session = uuid4()  # Generate new session ID
-    data = SessionData(username=name, conversation=[])
+    data = SessionData(username=name, raw_chat_data=[], summary=f"", conversation=[])
     await backend.create(session, data)
     cookie.attach_to_response(response, session)  # Attach cookie with session ID
-    active_sessions.append(session) 
+    active_sessions.append(session)
     return {"message": f"Session created for {name}. You can now start chatting.", "session_id": session}
 
-# Chat using the session ID passed in the request body
-sessions = {}
+async def sumarize_conversation(session_id):
+    print("Summarization Initiated")
+    # Get the conversation from the session
+    session_data = await backend.read(UUID(session_id))
+    # Summarize the conversation
+    # if len(session_data.raw_chat_data)%5==0 and len(session_data.raw_chat_data)>5:
+    data_to_summarize = ""
+    if len(session_data.raw_chat_data)>5:
+        data_to_summarize = ''.join(session_data.raw_chat_data)[-5:]
+    else:
+        data_to_summarize = ''.join(session_data.raw_chat_data)[:]
+    response = requests.post(
+                    url="https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+                    },
+                    data=json.dumps({
+                        "model": "meta-llama/llama-3-8b-instruct:free", 
+                        "messages": [
+                        {
+                            "role": "user",
+                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided. answer in 2-3 lines ensure correct data in summary no vague stuffs."
+                        }
+                        ]
+                        
+                    })
+                    )
+    print("Summary Generated : ", response.json())
+    try:
+        session_data.summary = response.json()['choices'][0]['message']['content']
+        await backend.update(UUID(session_id), session_data)
+    except Exception as e:
+        try:
+            response = requests.post(
+                    url="https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+                    },
+                    data=json.dumps({
+                        "model": "meta-llama/llama-3.1-70b-instruct:free", 
+                        "messages": [
+                        {
+                            "role": "user",
+                            "content": f"{data_to_summarize} Please provide a concise summary of the following conversations, user intent and answers provided. answer in 2-3 lines ensure correct data in summary no vague stuffs."
+                        }
+                        ]
+                        
+                    })
+                    )
+            print("Summary Generated : ", response.json())
+            session_data.summary = response.json()['choices'][0]['message']['content']
+            await backend.update(UUID(session_id), session_data)
+        except:
+            pass
+        
+        # session_data.summary = f"Summary Generation Failed - Reason : {e}"
+        # await backend.update(UUID(session_id), session_data)
+        pass
 
 async def generate_response(user_message: str, session_id: str):
     # Prepare the data to send to OpenRouter API
-    global OPENROUTER_MODEL
+
+    session_data = await backend.read(UUID(session_id))
+
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "user",
                 "content": f"""
-                Case Studies URL - "https://www.cogniticore.com/nlp"
-                Capabilities URL - "https://www.cogniticore.com/capabilities"
-                About Us URL     - "https://www.cogniticore.com/aboutus"
-                Contact Us URL   - "https://www.cogniticore.com/contactus"
-                Enabling AI Dominance in Your Industry for You AI Chat: Fast, Personal, Evolving Transform customer engagement with an industry-specific chatbot that automates support, provides insightful analytics, and delivers seamless lead classification—all while minimizing manual effort AI Solutions Tailored for Your Needs Natural Language Processing & Large Language Models: - Transform text into actionable insights with our advanced NLP and LLM capabilities. Whether it’s sentiment analysis, summarization, or chatbots, we help you communicate effectively and make data- driven decisions Computer Vision: - Harness the power of visual data to unlock insights and automate processes. From object detection to 3D reconstruction, our solutions enhance operational efficiency and drive innovation. MLOps:- Optimize your AI lifecycle with our MLOps solutions. We ensure seamless integration, monitoring, and scalability, allowing your AI projects to thrive in dynamic environments. Capabilities: - Harnessing AI for Efficiency Natural Language Processing: - View our Case Studies Natural Language Processing (NLP) empowers our chatbots to understand and engage in human language seamlessly. By utilizing advanced NLP techniques, we enhance customer interactions, delivering instant support and personalized experiences. Transform your communication and drive efficiency across industries with our innovative chatbot solutions powered by NLP. LLM – DOC: - View our Case Studies Large Language Models (LLMs) revolutionize the way we interact with technology. Our LLM solutions provide advanced text generation, understanding, and conversation capabilities, enabling businesses to automate tasks and enhance customer engagement. Experience the power of LLMs to drive innovation and improve efficiency across diverse applications in your industry. Workflow Automation: - View our Case Studies Workflow automation enhances efficiency by automating repetitive tasks and reducing errors. Our solutions integrate smoothly with your existing systems, allowing teams to focus on more valuable work. Streamline operations and boost productivity with tailored automation strategies designed to drive growth in your organization. MLOps – CLONE: - View our Case Studies CLONE (Continuous Learning Operations & Neural Efficiency) revolutionizes MLOps by optimizing machine learning workflows. Our services streamline model deployment, monitoring, and management, ensuring seamless integration and reliable performance, empowering your business to leverage AI for enhanced decision-making and innovation. Computer Vision: - View our Case Studies Computer vision enables machines to interpret and understand visual data. Our computer vision services, including defect detection, leverage advanced algorithms to analyze images and videos, providing actionable insights that enhance decision-making, improve automation, and drive innovation across various industries for your business. Try- ON: - View our Case Studies TryOn technology revolutionizes shopping with virtual try-ons. Our computer vision services use advanced algorithms to analyze images and videos, delivering actionable insights for defect detection, enhanced automation, and improved decision-making, ultimately transforming your business processes across various industries. About Us: We Believe in The Power of Communication Vision: - To pioneer the future of AI by creating transformative solutions that empower our partners to lead their industries, shaping a world where innovation and intelligence drive sustained success. Mission: - Empowering our partners to achieve industry dominance through innovative AI solutions, unlocking their full potential and driving transformative growth. Our Values: A.C.T.I.O.N. • Accountability: We are direct and transparent, fostering trust through no-nonsense communication and honest dealings. • Customer-Centric: Our client's success is our priority, and their needs come first in everything we do. • Trust & Transparency: We build strong, trusted relationships through clear communication and ethical actions. • Innovation-Driven Our adaptable, future-proof solutions are designed to evolve and keep you ahead of the curve. • Operational Excellence We follow strong, structured processes to deliver high-quality, resilient outcomes. • Nimbleness We constantly improvise, adapt, and overcome challenges to deliver exceptional results.
+                Home Page URL - https://www.cogniticore.com
+                Case Studies NLP URL - https://www.cogniticore.com/nlp
+                Case Studies CV URL - https://www.cogniticore.com/cv
+                Capabilities URL - https://www.cogniticore.com/capabilities
+                About Us URL     - https://www.cogniticore.com/aboutus
+                Contact Us URL   - https://www.cogniticore.com/contactus
+
+                Enable AI Dominance in Your Industry
+
+                AI Chat: Fast, Personal, Evolving  
+
+                Transform customer engagement with an industry-specific chatbot that automates support, provides insightful analytics, and delivers seamless lead classification—minimizing manual effort.
+
+                Tailored AI Solutions  
+
+                - Natural Language Processing (NLP) & Large Language Models (LLMs): Transform text into actionable insights with advanced NLP and LLM capabilities, enabling sentiment analysis, summarization, and effective communication for data-driven decisions.
+
+                - Computer Vision: Harness visual data to automate processes and unlock insights, from object detection to 3D reconstruction, enhancing operational efficiency.
+
+                - MLOps: Optimize your AI lifecycle with MLOps solutions, ensuring integration, monitoring, and scalability for thriving AI projects.
+
+                Capabilities: Harnessing AI for Efficiency  
+
+                - NLP: Our chatbots utilize advanced NLP techniques for seamless customer interactions, delivering instant support and personalized experiences.
+
+                - LLMs: Revolutionize technology interaction with advanced text generation and conversation capabilities, automating tasks and enhancing customer engagement.
+
+                - Workflow Automation: Automate repetitive tasks to reduce errors and streamline operations, allowing teams to focus on valuable work.
+
+                - MLOps (CLONE): CLONE (Continuous Learning Operations & Neural Efficiency) optimizes ML workflows, enhancing model deployment, monitoring, and management for better decision-making.
+
+                - Computer Vision: Enable machines to interpret visual data, leveraging algorithms for defect detection and actionable insights across industries.
+
+                - TryOn Technology: Revolutionize shopping with virtual try-ons, transforming business processes through enhanced automation and decision-making.
+
+                About Us: The Power of Communication  
+
+                - Vision: Pioneer AI’s future with transformative solutions that empower partners to lead their industries.
+                - Mission: Empower partners to achieve dominance through innovative AI solutions, unlocking potential and driving growth.
+
+                Our Values: A.C.T.I.O.N.  
+
+                - Accountability
+                - Customer-Centric  
+                - Trust & Transparency 
+                - Innovation-Driven 
+                - Operational Excellence
+                - Nimbleness
+
+
+                Prev - Conversation Summary : {session_data.summary} 
                 For the User asked Question {user_message} answer it on these guidelines
                 1. Answers should be always in points with proper line break and beautifully structured for readability
                 2. If question is not related to above context by more than 70% only Give `Please ask relevant question` as answer
                 3. Add relevant URL to answer as well for Reference
                 4. Answer as if you own the information
                 5. Only answer to the Point no useless Information
-                6. Answers must not be too big
+                6. Answers must not be too big around 100 words
                 7. If Question is greeting answer it professionally as you are assistant guiding clients for our company Cogniticore"""
             },
         ],
@@ -166,7 +271,6 @@ async def generate_response(user_message: str, session_id: str):
     }
 
     # Send request to OpenRouter API
-    import json
     response = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers={
@@ -216,32 +320,254 @@ async def generate_response(user_message: str, session_id: str):
                     if "id" in kp and "content" in kp and "delta" in kp and "choices" in kp:
                         combined_text += eval(kp)['choices'][0]['delta']['content']
                         yield eval(kp)['choices'][0]['delta']['content']
-    # After processing all chunks, append bot response to the session conversation
-    if session_id not in sessions:
-        sessions[session_id] = {"messages": []}  # Example session data
 
-    sessions[session_id]["messages"].append({"bot": combined_text})
-    th = Thread(target = insert_chat_pair, args = (user_message, combined_text, session_id,))
-    th.start()
+    session_data = await backend.read(UUID(session_id))
+    insert_chat_pair(user_message, combined_text, "hermes-3-llama-405b", session_data.summary, session_id)
+    if session_data:
+        session_data.conversation.append(f"bot: {combined_text}")
+        session_data.raw_chat_data.append(f"ques: {user_message} ans: {combined_text}")
+        await backend.update(UUID(session_id), session_data)
+
+    print("Initiatning Summary Generation")
+    await sumarize_conversation(session_id)
+    
+
     # Return the generated response
      # Stream the response
-from fastapi.responses import StreamingResponse
-from fastapi import FastAPI, Request
 
 @app.post("/stream")
-async def chat(request: Request):
-    body = await request.json()
-    user_message = body.get("user_message")
-    session_id = body.get("session_id")
+async def chat(request: StreamRequest):
+    user_message = request.user_message
+    session_id_str = request.session_id
 
-    # Append user's message to the session log
-    if session_id not in sessions:
-        sessions[session_id] = {"messages": []}  # Example session data
+    try:
+        # Convert session_id_str to UUID type
+        session_id = UUID(session_id_str)
+    except ValueError:
+        # Return error if the session ID format is invalid
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
 
-    sessions[session_id]["messages"].append({"user": user_message})
+    # Check if session exists in the backend
+    session_data = await backend.read(session_id)
+    if session_data is None:
+        # Return an error if session ID does not exist
+        raise HTTPException(status_code=404, detail="Please refresh your website your session ended due to inactivity")
+
+    # Append the user's message to the session conversation
+    session_data.conversation.append({"user": user_message})
+    await backend.update(session_id, session_data)
 
     # Return a StreamingResponse that generates the bot's response
-    return StreamingResponse(generate_response(user_message, session_id), media_type="text/plain")
+    return StreamingResponse(generate_response(user_message, str(session_id)), media_type="text/plain")
+
+
+
+#=============================== OPENAI STREAMING ==============================================
+
+AZURE_OPENAI_API_KEY = "ee400dfb08854a3196e0d7e1daa924fc" 
+AZURE_OPENAI_ENDPOINT = "https://ccw.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-08-01-preview"
+
+
+
+
+    # for chunk in response.iter_lines():
+    #     print("Phase 0: ", chunk)
+    #     decoded_chunk = chunk.decode()
+    #     print("Phase : 1", decoded_chunk)
+        # if len(decoded_chunk)>0:
+        #     decoded_chunk= eval("True".join("False".join("None".join(decoded_chunk.split("data: ")[-1].split("null")).split("false")).split("true")))
+        #     print("Phase : 2", decoded_chunk)
+        #     if len(decoded_chunk["choices"])>0:
+        #         try:
+        #             # Decode each chunk and handle the streaming response
+                    
+        #             # decoded_chunk = json.loads(chunk.decode('utf-8'))
+                    
+        #             print("Result : ", decoded_chunk)
+
+        #             chunk_message = decoded_chunk['choices'][0]['delta'].get('content', '')
+        #             if chunk_message:
+        #                 combined_text += chunk_message
+        #                 yield chunk_message  # Stream each chunk of content
+        #         except (KeyError, json.JSONDecodeError):
+        #             continue
+
+    # Store the final combined response in the session log
+    # if session_id not in sessions:
+    #     sessions[session_id] = {"messages": []}  # Example session data
+
+    # sessions[session_id]["messages"].append({"bot": combined_text})
+
+from openai import AzureOpenAI
+
+client = AzureOpenAI(
+  azure_endpoint = AZURE_OPENAI_ENDPOINT, 
+  api_key=AZURE_OPENAI_API_KEY,  
+  api_version="2024-07-18"
+)
+
+async def generate_response_azure(user_message: str, session_id: str):
+    # Prepare the data to send to OpenRouter API
+    session_data = await backend.read(UUID(session_id))
+    datad = f"""
+                Home Page URL - https://www.cogniticore.com
+                Case Studies NLP URL - "https://www.cogniticore.com/nlp
+                Case Studies CV URL - https://www.cogniticore.com/cv
+                Capabilities URL - https://www.cogniticore.com/capabilities
+                About Us URL     - https://www.cogniticore.com/aboutus
+                Contact Us URL   - https://www.cogniticore.com/contactus
+
+                Enable AI Dominance in Your Industry
+
+                AI Chat: Fast, Personal, Evolving  
+
+                Transform customer engagement with an industry-specific chatbot that automates support, provides insightful analytics, and delivers seamless lead classification—minimizing manual effort.
+
+                Tailored AI Solutions  
+
+                - Natural Language Processing (NLP) & Large Language Models (LLMs): Transform text into actionable insights with advanced NLP and LLM capabilities, enabling sentiment analysis, summarization, and effective communication for data-driven decisions.
+
+                - Computer Vision: Harness visual data to automate processes and unlock insights, from object detection to 3D reconstruction, enhancing operational efficiency.
+
+                - MLOps: Optimize your AI lifecycle with MLOps solutions, ensuring integration, monitoring, and scalability for thriving AI projects.
+
+                Capabilities: Harnessing AI for Efficiency  
+
+                - NLP: Our chatbots utilize advanced NLP techniques for seamless customer interactions, delivering instant support and personalized experiences.
+
+                - LLMs: Revolutionize technology interaction with advanced text generation and conversation capabilities, automating tasks and enhancing customer engagement.
+
+                - Workflow Automation: Automate repetitive tasks to reduce errors and streamline operations, allowing teams to focus on valuable work.
+
+                - MLOps (CLONE): CLONE (Continuous Learning Operations & Neural Efficiency) optimizes ML workflows, enhancing model deployment, monitoring, and management for better decision-making.
+
+                - Computer Vision: Enable machines to interpret visual data, leveraging algorithms for defect detection and actionable insights across industries.
+
+                - TryOn Technology: Revolutionize shopping with virtual try-ons, transforming business processes through enhanced automation and decision-making.
+
+                About Us: The Power of Communication  
+
+                - Vision: Pioneer AI’s future with transformative solutions that empower partners to lead their industries.
+                - Mission: Empower partners to achieve dominance through innovative AI solutions, unlocking potential and driving growth.
+
+                Our Values: A.C.T.I.O.N.  
+
+                - Accountability
+                - Customer-Centric  
+                - Trust & Transparency 
+                - Innovation-Driven 
+                - Operational Excellence
+                - Nimbleness
+
+                Contact Email Address - connect@cogniticore.com
+                Contact Phone Number  - Tel: +1 (302) 343-3422
+                Contact Address - 16192 Coastal Highway, Lewes Delaware 19958, County of Sussex
+                Linkdin URL - https://www.linkedin.com/company/cogniti-core
+                Instagram URL - https://www.instagram.com/COGNITICORE/
+                Thread(Twitter) URL -  https://x.com/CognitiCore
+
+                Prev - Conversation Summary : {session_data.summary}  for reference
+                For the User asked Question {user_message} answer it on these guidelines
+                1. Answers should be always in points with proper line break and beautifully organized for readability
+                3. Add relevant URL to answer as well.
+                4. Answer as if you own the information being an assistant of Cogniticore 
+                5. Only answer to the Point no useless and vague Information
+                6. Answers must not be too big around 100 words
+                7. If Question is greeting answer it professionally as you are assistant guiding clients for our company Cogniticore
+                8. Remove brackets and other text around provided url's in the answer
+                8. If {user_message} is irrelevant to cbove context answer Please ask relevant questions"""
+    
+    # datad = f"{user_message} answer in 3 points 50 words and don't answer in markdown format only text format"
+    payload = {
+                "messages": [
+                    {
+                    "role": "system",
+                    "content": [
+                        {
+                        "type": "text",
+                        "text": datad,
+                        }
+                    ]
+                    }
+                ],
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "max_tokens": 800,
+                "stream":True
+                }
+    
+    headers = {
+                    "Content-Type": "application/json",
+                    "api-key": AZURE_OPENAI_API_KEY,
+                }
+    # Send request to OpenRouter API
+    combined_text = ""
+    response = requests.post(AZURE_OPENAI_ENDPOINT, headers=headers, json=payload)
+    response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
+    for line in response.iter_lines():
+        if line:
+            answer = line.decode().split("data: ")[-1]
+            # print(answer)
+            if "delta" in answer:
+                data = "None".join(answer.split("null"))
+                data = "False".join(data.split("false"))
+                data = eval(data)
+                # print("Orig : ", data)
+                if "content"in data["choices"][0]['delta']:
+                  print(data["choices"][0]['delta']['content'], end="")
+                  result_to_stream = data["choices"][0]['delta']['content']
+                  result_to_stream = "".join(result_to_stream.split("**"))
+                  result_to_stream = " ".join(result_to_stream.split("["))
+                  result_to_stream = " ".join(result_to_stream.split("]"))
+                  combined_text+=result_to_stream
+                  yield  result_to_stream
+    
+
+    # After processing all chunks, append bot response to the session conversation
+    session_data = await backend.read(UUID(session_id))
+    insert_chat_pair(user_message, combined_text, "gpt-4o-mini", session_data.summary, session_id)
+    if session_data:
+        session_data.conversation.append(f"bot: {combined_text}")
+        session_data.raw_chat_data.append(f"ques: {user_message} ans: {combined_text}")
+        await backend.update(UUID(session_id), session_data)
+
+    print("Initiatning Summary Generation")
+    await sumarize_conversation(session_id)
+
+@app.post("/azure_stream")
+async def chat(request: StreamRequest):
+    user_message = request.user_message
+    session_id_str = request.session_id
+
+    try:
+        # Convert session_id_str to UUID type
+        session_id = UUID(session_id_str)
+    except ValueError:
+        # Return error if the session ID format is invalid
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
+
+    # Check if session exists in the backend
+    session_data = await backend.read(session_id)
+    if session_data is None:
+        # Return an error if session ID does not exist
+        raise HTTPException(status_code=404, detail="Session not found. Please create a new session.")
+
+    # Append the user's message to the session conversation
+    session_data.conversation.append({"user": user_message})
+    await backend.update(session_id, session_data)
+
+    # Return a StreamingResponse that generates the bot's response
+    return StreamingResponse(generate_response_azure(user_message, str(session_id)), media_type="text/plain")
+
+#== ====================================================================
+
+# Get user information using the session ID
+@app.get("/whoami")
+async def whoami(session_id: UUID):
+    session_data = await backend.read(session_id)
+    if not session_data:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session_data
 
 @app.post("/update_model")
 async def update_model(model_name: str):
@@ -255,18 +581,6 @@ async def update_model(model_name: str):
 async def get_current_model():
     return {"current_model": OPENROUTER_MODEL}
 
-@app.get("/")
-async def home():
-    return {"Application": "Application Up and Running"}
-
-# Get user information using the session ID
-@app.get("/whoami")
-async def whoami(session_id: UUID):
-    session_data = await backend.read(session_id)
-    if not session_data:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return session_data
-
 # Get the total number of active sessions
 @app.get("/session_counts")
 async def session_counts():
@@ -275,7 +589,12 @@ async def session_counts():
 # Get the list of current session IDs
 @app.get("/current_session_ids")
 async def current_session_ids():
-    return {"current_session_ids": active_sessions}
+    all_sessions = {}
+    for session_id in active_sessions:
+        session_data = await backend.read(session_id)
+        if session_data is not None:  # Ensure session data exists
+            all_sessions[session_id] = session_data
+    return {"current_session_ids": all_sessions}
 
 # Clear a specific session by session ID
 @app.post("/clear_session")
