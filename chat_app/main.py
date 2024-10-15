@@ -208,6 +208,11 @@ async def azure_sumarize_conversation(session_id):
     else:
         data_to_summarize = ''.join(session_data.raw_chat_data)[:]
 
+    headers = {
+                    "Content-Type": "application/json",
+                    "api-key": AZURE_OPENAI_API_KEY,
+                }
+
     payload = {
     "messages": [
         {
@@ -227,7 +232,7 @@ async def azure_sumarize_conversation(session_id):
     # "stream":True
     }
 
-    ENDPOINT = api_base
+    ENDPOINT = AZURE_OPENAI_ENDPOINT
 
     print(payload)
     # Send request
@@ -248,7 +253,7 @@ async def generate_response(user_message: str, session_id: str):
     # Prepare the data to send to OpenRouter API
 
     session_data = await backend.read(UUID(session_id))
-
+    
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": [
