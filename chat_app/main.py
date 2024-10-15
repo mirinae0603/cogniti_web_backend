@@ -531,7 +531,7 @@ async def generate_response_azure(user_message: str, session_id: str):
     All Contact Info's and Website related URL's - {company_info}
 
     - If the user asks for company details answer it based on above data, include relevant URLs
-    - Always answer with no more than 150 words.
+    - Always answer within 100-150 words.
     - Greet the user if their message is a greeting.
     - Use bullet points for clarity.
     - Be professional and concise.
