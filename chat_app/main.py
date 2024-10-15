@@ -14,6 +14,7 @@ from threading import Thread
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
 from datetime import datetime, timezone
+from prompt import *
 
 # Constants
 OPENROUTER_API_KEY = "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"  # Replace this with your OpenRouter API Key
@@ -461,7 +462,6 @@ async def azure_sumarize_conversation(session_id):
         print(e)
         pass
 
-from prompt imprt *
 
 async def generate_response_azure(user_message: str, session_id: str):
     # Prepare the data to send to OpenRouter API
